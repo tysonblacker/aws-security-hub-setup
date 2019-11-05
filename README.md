@@ -2,7 +2,7 @@
 
 These scripts automate the process of enabling and disabling AWS Security Hub simultaneously across a group of AWS accounts that are in your control. (Note, that you can have one master account and up to a 1000 member accounts).
 
-enablesecurityhub.py will enable Security Hub, send invitations from the master account and accept invitations in all member accounts. The result will be a master account that contains all security findings for all member accounts. Since Security Hub is regionally isolated, findings for each member account will roll up to the corresponding region in the master account. For example, the us-east-1 region in your Security Hub master account will contain the security findings for all us-east-1 findings from all associated member accounts.  If you enable Standards benchmarks AWS Config must be enabled, if there are regions where AWS Config is not already enabled the script will enable it.
+enablesecurityhub.py will enable Security Hub, send invitations from the master account and accept invitations in all member accounts. The result will be a master account that contains all security findings for all member accounts. Since Security Hub is regionally isolated, findings for each member account will roll up to the corresponding region in the master account. For example, the us-east-1 region in your Security Hub master account will contain the security findings for all us-east-1 findings from all associated member accounts.  If you enable Standards benchmarks AWS Config must be enabled, if there are regions where AWS Config is not already enabled the script will enable it sending the results to a bucket in the master account. The bucket policy will be configured to be allow the other accounts to write the AWS config updates.
 
 
 ## License Summary
@@ -13,7 +13,7 @@ This sample code is made available under a modified MIT license. See the LICENSE
 
 * The scripts depend on a pre-existing role in the master account and all of the member accounts that will be linked, the role name must be the same in all accounts and the role trust relationship needs to allow your instance or local credentials to assume the role.  The policy document below contains the required permissions for the script to succeed:
 
-``` 
+```
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -67,10 +67,10 @@ This sample code is made available under a modified MIT license. See the LICENSE
 }
 ```
 
-If you do not have a common role that includes at least the above permissions you will need to create a role in each member account as well as the master account with at least the above permissions.  When creating the role ensure you use the same role name in every account.  You can use the EnableSecurityHub.yaml CloudFormation Template to automate this process, as the template creates only global resources it can be created in any region.    
+If you do not have a common role that includes at least the above permissions you will need to create a role in each member account as well as the master account with at least the above permissions.  When creating the role ensure you use the same role name in every account.  You can use the EnableSecurityHub.yaml CloudFormation Template to automate this process, as the template creates only global resources it can be created in any region.
 
 * A CSV file that includes the list of accounts to be linked to the master account.  Accounts should be listed one per line in the format of AccountId,EmailAddress.  The EmailAddress must be the email associated with the root account.
-* Master AccountId which will receive findings for all the linked accounts within the CSV file 
+* Master AccountId which will receive findings for all the linked accounts within the CSV file
 
 ## Steps
 ### 1. Setup execution environment:
@@ -141,9 +141,9 @@ optional arguments:
                         If not specified, all available regions are enabled
   --enable_standards ENABLE_STANDARDS
                         comma separated list of standards ARNs to enable (ex: arn:aws:securityhub:::ruleset/cis-aws-foundations-benchmark/v/1.2.0 )
-  
+
 ```
-    
+
 #### 2b. Disable Security Hub
 * Copy the required CSV file to this directory
     * Should be in the formation of "AccountId,EmailAddress,..."

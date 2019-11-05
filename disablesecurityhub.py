@@ -25,7 +25,7 @@ from collections import OrderedDict
 from botocore.exceptions import ClientError
 
 
-def get_master_members(sh_client, aws_region):
+def get_master_members(sechub_client, aws_region):
     """
     Returns a list of current members of the SecurityHub master account
     :param aws_region: AWS Region of the SecurityHub master account
@@ -35,7 +35,7 @@ def get_master_members(sh_client, aws_region):
 
     member_dict = dict()
 
-    results = sh_client.list_members(
+    results = sechub_client.list_members(
         OnlyAssociated=False
     )
 
@@ -43,7 +43,7 @@ def get_master_members(sh_client, aws_region):
         member_dict.update({member['AccountId']: member['MemberStatus']})
 
     while results.get("NextToken"):
-        results = sh_client.list_members(
+        results = sechub_client.list_members(
             OnlyAssociated=False,
             NextToken=results['NextToken']
         )
@@ -89,6 +89,24 @@ def assume_role(aws_account_number, role_name):
     ))
 
     return session
+
+def disable_config(session, account, region):
+    # no iam, bucket removal, no bucket permissions update
+    print("Disabling AWS Config for {} in {}".format(account, region))
+    config = session.client('config', region_name=region)
+
+    try:
+        config.delete_configuration_recorder(ConfigurationRecorderName='default')
+    except ClientError as e:
+        print("Error {} deleteing Config recorder on account {}".format(repr(e), account))
+        aws_confige_delete = False
+    try:
+        config.delete_delivery_channel(DeliveryChannelName='config-s3-delivery')
+    except ClientError as e:
+        print("Error {} deleteing Config channel on account {}".format(repr(e), account))
+        aws_config_delete False
+
+
 
 if __name__ == '__main__':
 
@@ -161,13 +179,18 @@ if __name__ == '__main__':
                     account=account,
                     region=aws_region
                 ))
+                print("About to disable config {}".format(account))
 
-                sh_client = session.client('securityhub', region_name=aws_region)
+                disable_config_result = disable_config(session, account, aws_region)
+                if not config_result:
+                    failed_accounts.append({account: "Error disabling AWS Config for account {} in {}".format(account,aws_region)})
+
+                sechub_client = session.client('securityhub', region_name=aws_region)
                 if args.disable_standards_only:
                     for standard in standards_arns:
                         try:
                             subscription_arn = 'arn:aws:securityhub:{}:{}:subscription/{}'.format(aws_region, account,standard.split(':')[-1].split('/',1)[1])
-                            sh_client.batch_disable_standards(StandardsSubscriptionArns=[subscription_arn])
+                            sechub_client.batch_disable_standards(StandardsSubscriptionArns=[subscription_arn])
                             print("Finished disabling standard {} on account {} for region {}".format(standard,account, aws_region))
                         except ClientError as e:
                             print("Error disabling standards for account {}".format(account))
@@ -175,9 +198,9 @@ if __name__ == '__main__':
                 else:
                     if account in members[aws_region]:
 
-                        if sh_client.get_master_account().get('Master'):
+                        if sechub_client.get_master_account().get('Master'):
                             try:
-                                response = sh_client.disassociate_from_master_account()
+                                response = sechub_client.disassociate_from_master_account()
 
                             except ClientError as e:
                                 print("Error Processing Account {}".format(account))
@@ -223,7 +246,7 @@ if __name__ == '__main__':
                             region=aws_region
                         ))
 
-                    sh_client.disable_security_hub()
+                    sechub_client.disable_security_hub()
 
             # Refresh the member dictionary
             members[aws_region] = get_master_members(master_clients[aws_region], aws_region)

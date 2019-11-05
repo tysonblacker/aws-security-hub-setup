@@ -95,7 +95,12 @@ def get_master_members(sechub_client, aws_region):
 
 
 def check_config(session, account, region, s3_bucket_name):
-    print("Updating config {}".format(account))
+    """
+    Checks and sets up AWS config for the account so that is point at the central bucket on the
+    security account.
+    Configures the recorder, and delivery channel
+
+    """
     config = session.client('config', region_name=region)
     iam = session.client('iam')
 
@@ -134,6 +139,9 @@ def check_config(session, account, region, s3_bucket_name):
     return False
 
 def get_accounts(input_file):
+    """
+    Creates a dictionary accounts for to apply security access to from the csv file.
+    """
     for acct in args.input_file.readlines():
         split_line = acct.rstrip().split(",")
         if len(split_line) < 2:
@@ -150,6 +158,9 @@ def get_accounts(input_file):
     return aws_account_dict
 
 def get_securityhub_regions(session, enabled_regions):
+    """
+    Gets the list of regions from the commandline and returns a list
+    """
     securityhub_regions = []
     if enabled_regions:
         securityhub_regions = [str(item) for item in enabled_regions.split(',')]
@@ -160,13 +171,18 @@ def get_securityhub_regions(session, enabled_regions):
     return securityhub_regions
 
 def get_enabled_standards(enable_standards):
-    # Check if enable Standards
+    """
+    Checks if the security standards have been set for the account
+    """
     standards_arns = []
     standards_arns = [str(item) for item in enable_standards.split(',')]
     print("Enabling the following Security Hub Standards for enabled account(s) and region(s): {}".format(standards_arns))
     return standards_arns
 
 def process_master_account(master_account, role, securityhub_regions):
+    """
+    Enables the master account for the selected regions
+    """
     # Processing Master account
     master_session = assume_role(master_account, role)
     #master_session = boto3.Session()
@@ -188,19 +204,28 @@ def process_master_account(master_account, role, securityhub_regions):
 
 
 def arn_role(account):
+    """
+    Used to help create the bucket policy
+    """
     role_arn = "arn:aws:iam::{}:role/ManageSecurityHub".format(account)
     return role_arn
 
 def arn_roles(master_account, aws_accounts_dict):
+    """
+    Concatenates a list of roles allow write to the bucket
+    """
     roles = ["{}".format(arn_role(master_account))]
     for account_dict in aws_accounts_dict:
         roles.append("{}".format(arn_role(account_dict)))
     return roles
 
 
-
 def set_bucket_policy(s3, s3_bucket_name, master_account, aws_accounts_dict):
-
+    """
+    Creates a bucket policy so that all the accounts listed with the role
+    ManageSecurityHub can access the S3 bucket. Not that all the accounts need
+    to have this role added for this policy to be added.
+    """
     bucket_policy = {
         "Version": "2012-10-17",
         "Statement": [
@@ -235,7 +260,7 @@ def set_bucket_policy(s3, s3_bucket_name, master_account, aws_accounts_dict):
             }
         ]
     }
-
+    # Add the list of roles.
     bucket_policy["Statement"][0]["Principal"]["AWS"] = arn_roles(master_account, aws_accounts_dict)
     bucket_policy["Statement"][1]["Principal"]["AWS"] = arn_roles(master_account, aws_accounts_dict)
 
@@ -244,13 +269,18 @@ def set_bucket_policy(s3, s3_bucket_name, master_account, aws_accounts_dict):
 
 
 def create_master_bucket(master_account, role, aws_account_dict):
-    # TODO missing alternate bucket if already used.
+    """
+    Creates the master bucket so that all the accounts from all regions can write to the same bucket.
+    Each account will name space themselves to each account.
+    """
     default_bucket_avail = False
     default_bucket_exists = False
     master_session = assume_role(master_account, role)
     s3 = master_session.client('s3', region_name='ap-southeast-2')
     default_s3_bucket_name = 'config-bucket-{}'.format(master_account)
-    s3_bucket_name = False
+    # Randomly generates a bucket name to use if the default is already used.
+    # This is similar to the orginal code, but I wonder what happens if this bucket is also not available.
+    s3_bucket_name = 'config-bucket-{}-{}'.format(''.join(random.SystemRandom().choice(string.ascii_lowercase + string.digits) for _ in range(5)), master_account)
     # Check if default bucket name is available.
     try:
         s3.list_objects(Bucket=default_s3_bucket_name, MaxKeys=1)
@@ -267,7 +297,6 @@ def create_master_bucket(master_account, role, aws_account_dict):
         try:
             print("Creating Master bucket")
             s3.create_bucket(Bucket=s3_bucket_name, CreateBucketConfiguration={'LocationConstraint': 'ap-southeast-2'})
-            # TODO fix the policy
 
         except ClientError as e:
             print("Error {} checking bucket for Config delivery in account {}".format(repr(e), master_account))
@@ -379,7 +408,21 @@ if __name__ == '__main__':
                     except ClientError as e:
                         if e.response['Error']['Code'] == 'ResourceConflictException':
                             pass
-                    #TODO need to re add arns
+                    for standard in standards_arns:
+                        sechub_client.batch_enable_standards(StandardsSubscriptionRequests=[{'StandardsArn' : standard}])
+                        start_time = int(time.time())
+                        status = ''
+                        while status != 'READY':
+                            if (int(time.time()) - start_time) > 100:
+                                print("Timeout waiting for READY state enabling standard {standard} in region {region} for account {account}, last state: {status}".format(standard=standard,region=aws_region, account=account, status=status))
+                                break
+                            enabled_standards = sechub_client.get_enabled_standards()
+                            for enabled_stanard in enabled_standards['StandardsSubscriptions']:
+                                if enabled_stanard['StandardsArn'] == standard:
+                                    status = enabled_stanard['StandardsStatus']
+                        if status == 'READY':
+                            print("Finished enabling stanard {} on account {} for region {}".format(standard,account, aws_region))
+
 
                 if account not in members[aws_region]:
                     master_clients[aws_region].create_members(
