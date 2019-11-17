@@ -91,6 +91,10 @@ def assume_role(aws_account_number, role_name):
     return session
 
 def disable_config(session, account, region):
+    """
+    Deletes the configuration recorder and delivery channel but doesn't delete the
+    bucket. The the bucket permissions are not changed.
+    """
     # no iam, bucket removal, no bucket permissions update
     print("Disabling AWS Config for {} in {}".format(account, region))
     config = session.client('config', region_name=region)

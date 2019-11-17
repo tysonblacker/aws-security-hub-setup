@@ -96,8 +96,7 @@ def get_master_members(sechub_client, aws_region):
 
 def check_config(session, account, region, s3_bucket_name):
     """
-    Checks and sets up AWS config for the account so that is point at the central bucket on the
-    security account.
+    Checks and sets up AWS config for the account so that it is pointing the bucket in the security account
     Configures the recorder, and delivery channel
 
     """
@@ -172,7 +171,7 @@ def get_securityhub_regions(session, enabled_regions):
 
 def get_enabled_standards(enable_standards):
     """
-    Checks if the security standards have been set for the account
+    Checks if the security standards have been set for the account and returns the list.
     """
     standards_arns = []
     standards_arns = [str(item) for item in enable_standards.split(',')]
@@ -223,8 +222,9 @@ def arn_roles(master_account, aws_accounts_dict):
 def set_bucket_policy(s3, s3_bucket_name, master_account, aws_accounts_dict):
     """
     Creates a bucket policy so that all the accounts listed with the role
-    ManageSecurityHub can access the S3 bucket. Not that all the accounts need
-    to have this role added for this policy to be added.
+    ManageSecurityHub can access the S3 bucket. Note that all the accounts need
+    to have this role in order to create the policy as IAM checks that the role on
+    the account is valid.
     """
     bucket_policy = {
         "Version": "2012-10-17",
@@ -270,7 +270,7 @@ def set_bucket_policy(s3, s3_bucket_name, master_account, aws_accounts_dict):
 
 def create_master_bucket(master_account, role, aws_account_dict):
     """
-    Creates the master bucket so that all the accounts from all regions can write to the same bucket.
+    Creates the master bucket so that AWS config all the accounts can write to the same bucket.
     Each account will name space themselves to each account.
     """
     default_bucket_avail = False
@@ -322,8 +322,6 @@ def check_if_member_added(account, members, aws_region):
             break
         time.sleep(5)
         members[aws_region] = get_master_members(master_clients[aws_region], aws_region)
-
-
 
 
 if __name__ == '__main__':
